@@ -1,0 +1,23 @@
+[Unit]
+Description=Counter-Strike 2 Dedicated Server
+After=network.target
+
+[Service]
+Type=simple
+User=steam
+WorkingDirectory=/home/steam/cs2
+ExecStart=/home/steam/cs2/game/bin/linuxsteamrt64/cs2 \
+  -dedicated \
+  -console \
+  +game_type 0 \
+  +game_mode 1 \
+  +mapgroup mg_active \
+  +map de_dust2 \
+  +sv_setsteamaccount ${GSLT_TOKEN}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
