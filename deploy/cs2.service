@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=steam
 WorkingDirectory=/home/steam/cs2
+Environment=LD_LIBRARY_PATH=/home/steam/cs2/game/csgo/bin/linuxsteamrt64:/home/steam/cs2/game/bin/linuxsteamrt64
 ExecStart=/home/steam/cs2/game/bin/linuxsteamrt64/cs2 \
   -dedicated \
   -console \

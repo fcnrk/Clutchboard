@@ -17,6 +17,8 @@ services:
 
   api:
     build: ./api
+    ports:
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER:-postgres}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-clutchboard}
       API_SECRET: ${API_SECRET}

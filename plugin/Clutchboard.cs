@@ -103,13 +103,16 @@ public class ClutchboardPlugin : BasePlugin
 
     // ── Player events ─────────────────────────────────────────────────────────
 
+    private static ulong SteamId(CCSPlayerController p) =>
+        p.AuthorizedSteamID?.SteamId64 ?? 0UL;
+
     private HookResult OnPlayerConnect(EventPlayerConnectFull @event, GameEventInfo _)
     {
         var p = @event.Userid;
         if (p == null || !p.IsValid) return HookResult.Continue;
         _api.EnqueueEvent(new PlayerConnectEventDto
         {
-            SteamId     = (long)p.SteamID,
+            SteamId     = (long)SteamId(p),
             DisplayName = p.PlayerName,
         });
         return HookResult.Continue;
@@ -119,11 +122,12 @@ public class ClutchboardPlugin : BasePlugin
     {
         var p = @event.Userid;
         if (p == null || !p.IsValid) return HookResult.Continue;
+        var sid = SteamId(p);
         // Team 3 = CT, Team 2 = T, Team 0 = Unassigned, Team 1 = Spectator
         if (@event.Team is 2 or 3)
-            _playerTeams[p.SteamID] = @event.Team == 3 ? "CT" : "T";
+            _playerTeams[sid] = @event.Team == 3 ? "CT" : "T";
         else
-            _playerTeams.Remove(p.SteamID);
+            _playerTeams.Remove(sid);
         return HookResult.Continue;
     }
 
@@ -138,9 +142,9 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId         = _matchId,
             RoundNumber     = _currentRound,
-            KillerSteamId   = killer?.IsValid   == true ? (long?)killer.SteamID   : null,
-            VictimSteamId   = (long)victim.SteamID,
-            AssisterSteamId = assister?.IsValid == true ? (long?)assister.SteamID : null,
+            KillerSteamId   = killer?.IsValid   == true ? (long?)SteamId(killer)   : null,
+            VictimSteamId   = (long)SteamId(victim),
+            AssisterSteamId = assister?.IsValid == true ? (long?)SteamId(assister) : null,
             Weapon          = @event.Weapon,
             Headshot        = @event.Headshot,
             Penetrated      = @event.Penetrated > 0,
@@ -160,8 +164,8 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId          = _matchId,
             RoundNumber      = _currentRound,
-            AttackerSteamId  = attacker?.IsValid == true ? (long?)attacker.SteamID : null,
-            VictimSteamId    = (long)victim.SteamID,
+            AttackerSteamId  = attacker?.IsValid == true ? (long?)SteamId(attacker) : null,
+            VictimSteamId    = (long)SteamId(victim),
             Weapon           = @event.Weapon,
             Damage           = @event.DmgHealth,
             DamageArmor      = @event.DmgArmor,
@@ -204,7 +208,7 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId     = _matchId,
             RoundNumber = _currentRound,
-            SteamId     = (long)player.SteamID,
+            SteamId     = (long)SteamId(player),
             EventType   = eventType,
         });
     }
@@ -218,7 +222,7 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId     = _matchId,
             RoundNumber = _currentRound,
-            SteamId     = (long)p.SteamID,
+            SteamId     = (long)SteamId(p),
             Weapon      = @event.Weapon,
         });
         return HookResult.Continue;
