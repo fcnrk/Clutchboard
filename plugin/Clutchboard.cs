@@ -62,6 +62,16 @@ public class ClutchboardPlugin : BasePlugin
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo _)
     {
+        if (_matchId == string.Empty)
+        {
+            _matchId = Guid.NewGuid().ToString();
+            _api.EnqueueEvent(new MatchStartEventDto
+            {
+                MatchId   = _matchId,
+                MapName   = Server.MapName,
+                StartedAt = DateTime.UtcNow.ToString("O"),
+            });
+        }
         _currentRound++;
         return HookResult.Continue;
     }
