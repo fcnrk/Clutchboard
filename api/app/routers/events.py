@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -75,22 +76,36 @@ async def _player_connect(conn: asyncpg.Connection, e: PlayerConnectEvent) -> No
 
 async def _match_start(conn: asyncpg.Connection, e: MatchStartEvent) -> None:
     started_at = datetime.fromisoformat(e.started_at.replace("Z", "+00:00"))
-    map_name = e.map_name
-    # Plugin sends "workshop/<id>/<bsp>" for workshop maps — resolve the display title.
-    if map_name.startswith("workshop/"):
-        parts = map_name.split("/", 2)
-        workshop_id = parts[1] if len(parts) > 1 else ""
-        bsp_name = parts[2] if len(parts) > 2 else map_name
-        if workshop_id:
-            map_name = await resolve_workshop_map_name(workshop_id, bsp_name)
+    raw = e.map_name
+    workshop_id: str | None = None
+    bsp_name = raw
+
+    if raw.startswith("workshop/"):
+        parts = raw.split("/", 2)
+        workshop_id = parts[1] if len(parts) > 1 else None
+        bsp_name = parts[2] if len(parts) > 2 else raw
+
+    match_id = uuid.UUID(e.match_id)
+    # Insert immediately with the BSP name so the match exists for all subsequent events.
     await conn.execute(
         """
         INSERT INTO matches (id, map_name, started_at, status)
         VALUES ($1, $2, $3, 'live')
         ON CONFLICT (id) DO NOTHING
         """,
-        uuid.UUID(e.match_id), map_name, started_at,
+        match_id, bsp_name, started_at,
     )
+    # Resolve the Steam Workshop display name in the background — doesn't block ingestion.
+    if workshop_id:
+        asyncio.create_task(_resolve_workshop_name(match_id, workshop_id, bsp_name))
+
+
+async def _resolve_workshop_name(match_id: uuid.UUID, workshop_id: str, fallback: str) -> None:
+    name = await resolve_workshop_map_name(workshop_id, fallback)
+    if name == fallback:
+        return
+    async with get_connection() as conn:
+        await conn.execute("UPDATE matches SET map_name = $1 WHERE id = $2", name, match_id)
 
 
 async def _round_start(conn: asyncpg.Connection, e: RoundStartEvent) -> None:

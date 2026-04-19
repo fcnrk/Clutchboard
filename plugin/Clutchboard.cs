@@ -201,9 +201,9 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId         = _matchId,
             RoundNumber     = _currentRound,
-            KillerSteamId   = killer?.IsValid   == true ? (long?)SteamId(killer)   : null,
+            KillerSteamId   = killer?.IsValid   == true && HasSteamId(killer)   ? (long?)SteamId(killer)   : null,
             VictimSteamId   = (long)SteamId(victim),
-            AssisterSteamId = assister?.IsValid == true ? (long?)SteamId(assister) : null,
+            AssisterSteamId = assister?.IsValid == true && HasSteamId(assister) ? (long?)SteamId(assister) : null,
             Weapon          = @event.Weapon,
             Headshot        = @event.Headshot,
             Penetrated      = @event.Penetrated > 0,
@@ -223,7 +223,7 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId          = _matchId,
             RoundNumber      = _currentRound,
-            AttackerSteamId  = attacker?.IsValid == true ? (long?)SteamId(attacker) : null,
+            AttackerSteamId  = attacker?.IsValid == true && HasSteamId(attacker) ? (long?)SteamId(attacker) : null,
             VictimSteamId    = (long)SteamId(victim),
             Weapon           = @event.Weapon,
             Damage           = @event.DmgHealth,
