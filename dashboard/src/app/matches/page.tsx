@@ -33,7 +33,10 @@ export default async function MatchesPage() {
                 {m.t_score} – {m.ct_score}
               </span>
               <p className="text-gray-400 text-xs">
-                {new Date(m.started_at).toLocaleDateString()}
+                {new Date(m.started_at).toLocaleDateString(undefined, {
+                  year: 'numeric', month: 'short', day: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
               </p>
             </div>
           </Link>
