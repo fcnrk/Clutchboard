@@ -18,12 +18,24 @@ public class ClutchboardPlugin : BasePlugin
     private string _matchId = string.Empty;
     private int _currentRound;
     private bool _matchStartSent;
+    private string _gameDir = string.Empty;
     private readonly Dictionary<ulong, string> _playerTeams = new();
 
     public override void Load(bool hotReload)
     {
         var cfg = LoadConfig();
         _api = new ApiClient(cfg.ApiUrl, cfg.ApiSecret);
+
+        // ModuleDirectory = .../csgo/addons/counterstrikesharp/plugins/Clutchboard/
+        _gameDir = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", ".."));
+
+        RegisterListener<Listeners.OnMapStart>(_ =>
+        {
+            _matchId = Guid.NewGuid().ToString();
+            _currentRound = 0;
+            _matchStartSent = false;
+            _playerTeams.Clear();
+        });
 
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
@@ -45,14 +57,6 @@ public class ClutchboardPlugin : BasePlugin
     }
 
     // ── Match lifecycle ───────────────────────────────────────────────────────
-
-    public override void OnMapStart(string mapName)
-    {
-        _matchId = Guid.NewGuid().ToString();
-        _currentRound = 0;
-        _matchStartSent = false;
-        _playerTeams.Clear();
-    }
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo _)
     {
@@ -142,15 +146,12 @@ public class ClutchboardPlugin : BasePlugin
         }
     }
 
-    private static string CurrentMapName()
+    private string CurrentMapName()
     {
         var bspName = Server.MapName;
-        // Workshop maps live at <gameDir>/maps/workshop/<workshopId>/<bsp>.bsp.
-        // Scan to find which workshop folder owns the current BSP so the API can
-        // resolve the real display name from Steam Workshop.
         try
         {
-            var workshopDir = Path.Combine(Server.GameDirectory, "maps", "workshop");
+            var workshopDir = Path.Combine(_gameDir, "maps", "workshop");
             if (Directory.Exists(workshopDir))
             {
                 foreach (var dir in Directory.EnumerateDirectories(workshopDir))
