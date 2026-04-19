@@ -1,9 +1,12 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
+
+logger = logging.getLogger(__name__)
 
 from app.schemas.events import (
     EventPayload, KillEvent, DamageEvent, FlashEvent, UtilityEvent,
@@ -12,6 +15,7 @@ from app.schemas.events import (
 )
 from app.database import get_connection
 from app.services.match_tracker import end_match
+from app.services.steam import resolve_workshop_map_name
 from app.config import settings
 
 _api_key_header = APIKeyHeader(name="X-Api-Secret", auto_error=False)
@@ -29,27 +33,30 @@ router = APIRouter(dependencies=[Depends(verify_api_secret)])
 async def ingest_events(events: list[EventPayload]) -> None:
     async with get_connection() as conn:
         for event in events:
-            match event.type:
-                case "player_connect":
-                    await _player_connect(conn, event)
-                case "match_start":
-                    await _match_start(conn, event)
-                case "round_start":
-                    await _round_start(conn, event)
-                case "round_end":
-                    await _round_end(conn, event)
-                case "kill":
-                    await _kill(conn, event)
-                case "damage":
-                    await _damage(conn, event)
-                case "flash":
-                    await _flash(conn, event)
-                case "utility":
-                    await _utility(conn, event)
-                case "weapon_fire":
-                    await _weapon_fire(conn, event)
-                case "match_end":
-                    await _match_end(conn, event)
+            try:
+                match event.type:
+                    case "player_connect":
+                        await _player_connect(conn, event)
+                    case "match_start":
+                        await _match_start(conn, event)
+                    case "round_start":
+                        await _round_start(conn, event)
+                    case "round_end":
+                        await _round_end(conn, event)
+                    case "kill":
+                        await _kill(conn, event)
+                    case "damage":
+                        await _damage(conn, event)
+                    case "flash":
+                        await _flash(conn, event)
+                    case "utility":
+                        await _utility(conn, event)
+                    case "weapon_fire":
+                        await _weapon_fire(conn, event)
+                    case "match_end":
+                        await _match_end(conn, event)
+            except Exception:
+                logger.exception("Failed to process event type=%s match=%s", event.type, getattr(event, "match_id", None))
 
 
 async def _player_connect(conn: asyncpg.Connection, e: PlayerConnectEvent) -> None:
@@ -68,13 +75,21 @@ async def _player_connect(conn: asyncpg.Connection, e: PlayerConnectEvent) -> No
 
 async def _match_start(conn: asyncpg.Connection, e: MatchStartEvent) -> None:
     started_at = datetime.fromisoformat(e.started_at.replace("Z", "+00:00"))
+    map_name = e.map_name
+    # Plugin sends "workshop/<id>/<bsp>" for workshop maps — resolve the display title.
+    if map_name.startswith("workshop/"):
+        parts = map_name.split("/", 2)
+        workshop_id = parts[1] if len(parts) > 1 else ""
+        bsp_name = parts[2] if len(parts) > 2 else map_name
+        if workshop_id:
+            map_name = await resolve_workshop_map_name(workshop_id, bsp_name)
     await conn.execute(
         """
         INSERT INTO matches (id, map_name, started_at, status)
         VALUES ($1, $2, $3, 'live')
         ON CONFLICT (id) DO NOTHING
         """,
-        uuid.UUID(e.match_id), e.map_name, started_at,
+        uuid.UUID(e.match_id), map_name, started_at,
     )
 
 
@@ -94,7 +109,10 @@ async def _round_end(conn: asyncpg.Connection, e: RoundEndEvent) -> None:
         """
         INSERT INTO rounds (match_id, round_number, winner, win_reason, duration_seconds)
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (match_id, round_number) DO NOTHING
+        ON CONFLICT (match_id, round_number) DO UPDATE SET
+            winner           = EXCLUDED.winner,
+            win_reason       = EXCLUDED.win_reason,
+            duration_seconds = EXCLUDED.duration_seconds
         """,
         uuid.UUID(e.match_id), e.round_number, e.winner, e.win_reason, e.duration_seconds,
     )

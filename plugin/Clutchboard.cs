@@ -69,10 +69,11 @@ public class ClutchboardPlugin : BasePlugin
         if (!_matchStartSent)
         {
             _matchStartSent = true;
+            EmitConnectedPlayers();
             _api.EnqueueEvent(new MatchStartEventDto
             {
                 MatchId   = _matchId,
-                MapName   = Server.MapName,
+                MapName   = CurrentMapName(),
                 StartedAt = DateTime.UtcNow.ToString("O"),
             });
         }
@@ -128,6 +129,44 @@ public class ClutchboardPlugin : BasePlugin
 
     private static bool IsBot(CCSPlayerController p) => p.IsBot;
 
+    // Returns false when steam auth hasn't resolved yet — avoids FK violations on the players table.
+    private static bool HasSteamId(CCSPlayerController p) => SteamId(p) != 0UL;
+
+    private void EmitConnectedPlayers()
+    {
+        foreach (var p in Utilities.GetPlayers())
+        {
+            if (p == null || !p.IsValid || IsBot(p) || !HasSteamId(p)) continue;
+            _api.EnqueueEvent(new PlayerConnectEventDto
+            {
+                SteamId     = (long)SteamId(p),
+                DisplayName = p.PlayerName,
+            });
+        }
+    }
+
+    private static string CurrentMapName()
+    {
+        var bspName = Server.MapName;
+        // Workshop maps live at <gameDir>/maps/workshop/<workshopId>/<bsp>.bsp.
+        // Scan to find which workshop folder owns the current BSP so the API can
+        // resolve the real display name from Steam Workshop.
+        try
+        {
+            var workshopDir = Path.Combine(Server.GameDirectory, "maps", "workshop");
+            if (Directory.Exists(workshopDir))
+            {
+                foreach (var dir in Directory.EnumerateDirectories(workshopDir))
+                {
+                    if (File.Exists(Path.Combine(dir, bspName + ".bsp")))
+                        return $"workshop/{Path.GetFileName(dir)}/{bspName}";
+                }
+            }
+        }
+        catch { /* non-critical */ }
+        return bspName;
+    }
+
     private HookResult OnPlayerConnect(EventPlayerConnectFull @event, GameEventInfo _)
     {
         var p = @event.Userid;
@@ -157,7 +196,7 @@ public class ClutchboardPlugin : BasePlugin
     {
         if (_matchId == string.Empty) return HookResult.Continue;
         var victim = @event.Userid;
-        if (victim == null || !victim.IsValid || IsBot(victim)) return HookResult.Continue;
+        if (victim == null || !victim.IsValid || IsBot(victim) || !HasSteamId(victim)) return HookResult.Continue;
         var killer   = @event.Attacker;
         var assister = @event.Assister;
         _api.EnqueueEvent(new KillEventDto
@@ -180,7 +219,7 @@ public class ClutchboardPlugin : BasePlugin
     {
         if (_matchId == string.Empty) return HookResult.Continue;
         var victim = @event.Userid;
-        if (victim == null || !victim.IsValid || IsBot(victim)) return HookResult.Continue;
+        if (victim == null || !victim.IsValid || IsBot(victim) || !HasSteamId(victim)) return HookResult.Continue;
         var attacker = @event.Attacker;
         _api.EnqueueEvent(new DamageEventDto
         {

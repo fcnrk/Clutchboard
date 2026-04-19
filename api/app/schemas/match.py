@@ -16,8 +16,8 @@ class MatchListItem(BaseModel):
 
 class RoundSummary(BaseModel):
     round_number: int
-    winner: str
-    win_reason: str
+    winner: str | None
+    win_reason: str | None
     duration_seconds: int | None
 
 
