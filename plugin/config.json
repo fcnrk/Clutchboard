@@ -1,4 +1,4 @@
 {
-  "ApiUrl": "http://localhost:8000",
+  "ApiUrl": "http://127.0.0.1:8000",
   "ApiSecret": "4d193537dd88a59f94a1d26d87de3f8d0d6af0e213dfb07abd22df1daa3ad684"
 }

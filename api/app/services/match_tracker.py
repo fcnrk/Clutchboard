@@ -9,6 +9,7 @@ async def end_match(
     player_teams: dict[str, str],
 ) -> None:
     if player_teams:
+        player_teams = {sid: team for sid, team in player_teams.items() if sid != "0"}
         steam_ids = list(player_teams.keys())
         teams = [player_teams[sid] for sid in steam_ids]
         async with conn.transaction():
