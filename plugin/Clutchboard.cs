@@ -25,7 +25,6 @@ public class ClutchboardPlugin : BasePlugin
         var cfg = LoadConfig();
         _api = new ApiClient(cfg.ApiUrl, cfg.ApiSecret);
 
-        RegisterEventHandler<EventGameStart>(OnGameStart);
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
         RegisterEventHandler<EventCsWinPanelMatch>(OnMatchEnd);
@@ -47,14 +46,12 @@ public class ClutchboardPlugin : BasePlugin
 
     // ── Match lifecycle ───────────────────────────────────────────────────────
 
-    private HookResult OnGameStart(EventGameStart @event, GameEventInfo _)
+    public override void OnMapStart(string mapName)
     {
         _matchId = Guid.NewGuid().ToString();
         _currentRound = 0;
         _matchStartSent = false;
         _playerTeams.Clear();
-        // Don't send MatchStart here — Server.MapName is stale until the map fully loads.
-        return HookResult.Continue;
     }
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo _)
