@@ -7,7 +7,7 @@ from fastapi.security import APIKeyHeader
 
 from app.schemas.events import (
     EventPayload, KillEvent, DamageEvent, FlashEvent, UtilityEvent,
-    WeaponFireEvent, RoundEndEvent, MatchStartEvent, MatchEndEvent,
+    WeaponFireEvent, RoundStartEvent, RoundEndEvent, MatchStartEvent, MatchEndEvent,
     PlayerConnectEvent,
 )
 from app.database import get_connection
@@ -34,6 +34,8 @@ async def ingest_events(events: list[EventPayload]) -> None:
                     await _player_connect(conn, event)
                 case "match_start":
                     await _match_start(conn, event)
+                case "round_start":
+                    await _round_start(conn, event)
                 case "round_end":
                     await _round_end(conn, event)
                 case "kill":
@@ -73,6 +75,17 @@ async def _match_start(conn: asyncpg.Connection, e: MatchStartEvent) -> None:
         ON CONFLICT (id) DO NOTHING
         """,
         uuid.UUID(e.match_id), e.map_name, started_at,
+    )
+
+
+async def _round_start(conn: asyncpg.Connection, e: RoundStartEvent) -> None:
+    await conn.execute(
+        """
+        INSERT INTO rounds (match_id, round_number)
+        VALUES ($1, $2)
+        ON CONFLICT (match_id, round_number) DO NOTHING
+        """,
+        uuid.UUID(e.match_id), e.round_number,
     )
 
 

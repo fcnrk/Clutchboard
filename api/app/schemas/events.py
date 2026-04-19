@@ -59,6 +59,12 @@ class WeaponFireEvent(BaseModel):
     weapon: str
 
 
+class RoundStartEvent(BaseModel):
+    type: Literal["round_start"]
+    match_id: str
+    round_number: int
+
+
 class RoundEndEvent(BaseModel):
     type: Literal["round_end"]
     match_id: str
@@ -98,6 +104,7 @@ EventPayload = Annotated[
         FlashEvent,
         UtilityEvent,
         WeaponFireEvent,
+        RoundStartEvent,
         RoundEndEvent,
         MatchStartEvent,
         MatchEndEvent,

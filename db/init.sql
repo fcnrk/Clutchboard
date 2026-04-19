@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS rounds (
     id               SERIAL PRIMARY KEY,
     match_id         UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
     round_number     INT NOT NULL,
-    winner           TEXT NOT NULL,
-    win_reason       TEXT NOT NULL,
+    winner           TEXT,
+    win_reason       TEXT,
     duration_seconds INT,
     UNIQUE (match_id, round_number)
 );

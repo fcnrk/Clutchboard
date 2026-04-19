@@ -67,6 +67,13 @@ public class WeaponFireEventDto
     [JsonPropertyName("weapon")]       public string Weapon      { get; set; } = "";
 }
 
+public class RoundStartEventDto
+{
+    [JsonPropertyName("type")]         public string Type        { get; set; } = "round_start";
+    [JsonPropertyName("match_id")]     public string MatchId     { get; set; } = "";
+    [JsonPropertyName("round_number")] public int    RoundNumber { get; set; }
+}
+
 public class RoundEndEventDto
 {
     [JsonPropertyName("type")]             public string  Type            { get; set; } = "round_end";

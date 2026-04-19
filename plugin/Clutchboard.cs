@@ -73,6 +73,11 @@ public class ClutchboardPlugin : BasePlugin
             });
         }
         _currentRound++;
+        _api.EnqueueEvent(new RoundStartEventDto
+        {
+            MatchId     = _matchId,
+            RoundNumber = _currentRound,
+        });
         return HookResult.Continue;
     }
 
