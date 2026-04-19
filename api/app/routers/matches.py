@@ -1,11 +1,20 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import APIKeyHeader
 
+from app.config import settings
 from app.database import get_connection
 from app.schemas.match import MatchListItem, MatchDetailResponse, MatchScoreboardEntry, RoundSummary
 
 router = APIRouter()
+
+_api_key_header = APIKeyHeader(name="X-API-Secret", auto_error=False)
+
+
+async def require_secret(key: str | None = Depends(_api_key_header)):
+    if not settings.api_secret or key != settings.api_secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 @router.get("/matches", response_model=list[MatchListItem])
@@ -77,3 +86,12 @@ async def get_match(match_id: uuid.UUID):
             scoreboard=[MatchScoreboardEntry(**dict(r)) for r in scoreboard_rows],
             rounds=[RoundSummary(**dict(r)) for r in round_rows],
         )
+
+
+@router.delete("/matches/{match_id}", status_code=204, dependencies=[Depends(require_secret)])
+async def delete_match(match_id: uuid.UUID):
+    async with get_connection() as conn:
+        result = await conn.execute("DELETE FROM matches WHERE id = $1", match_id)
+        if result == "DELETE 0":
+            raise HTTPException(status_code=404, detail="Match not found")
+        await conn.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY player_stats")

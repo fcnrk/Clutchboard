@@ -17,6 +17,7 @@ public class ClutchboardPlugin : BasePlugin
     private ApiClient _api = null!;
     private string _matchId = string.Empty;
     private int _currentRound;
+    private bool _matchStartSent;
     private readonly Dictionary<ulong, string> _playerTeams = new();
 
     public override void Load(bool hotReload)
@@ -50,13 +51,9 @@ public class ClutchboardPlugin : BasePlugin
     {
         _matchId = Guid.NewGuid().ToString();
         _currentRound = 0;
+        _matchStartSent = false;
         _playerTeams.Clear();
-        _api.EnqueueEvent(new MatchStartEventDto
-        {
-            MatchId   = _matchId,
-            MapName   = Server.MapName,
-            StartedAt = DateTime.UtcNow.ToString("O"),
-        });
+        // Don't send MatchStart here — Server.MapName is stale until the map fully loads.
         return HookResult.Continue;
     }
 
@@ -65,6 +62,13 @@ public class ClutchboardPlugin : BasePlugin
         if (_matchId == string.Empty)
         {
             _matchId = Guid.NewGuid().ToString();
+            _matchStartSent = false;
+            _playerTeams.Clear();
+        }
+
+        if (!_matchStartSent)
+        {
+            _matchStartSent = true;
             _api.EnqueueEvent(new MatchStartEventDto
             {
                 MatchId   = _matchId,
@@ -72,6 +76,7 @@ public class ClutchboardPlugin : BasePlugin
                 StartedAt = DateTime.UtcNow.ToString("O"),
             });
         }
+
         _currentRound++;
         _api.EnqueueEvent(new RoundStartEventDto
         {
@@ -119,12 +124,14 @@ public class ClutchboardPlugin : BasePlugin
     // ── Player events ─────────────────────────────────────────────────────────
 
     private static ulong SteamId(CCSPlayerController p) =>
-        p.AuthorizedSteamID?.SteamId64 ?? 0UL;
+        p.AuthorizedSteamID?.SteamId64 ?? p.SteamID;
+
+    private static bool IsBot(CCSPlayerController p) => p.IsBot;
 
     private HookResult OnPlayerConnect(EventPlayerConnectFull @event, GameEventInfo _)
     {
         var p = @event.Userid;
-        if (p == null || !p.IsValid) return HookResult.Continue;
+        if (p == null || !p.IsValid || IsBot(p)) return HookResult.Continue;
         _api.EnqueueEvent(new PlayerConnectEventDto
         {
             SteamId     = (long)SteamId(p),
@@ -136,7 +143,7 @@ public class ClutchboardPlugin : BasePlugin
     private HookResult OnPlayerTeam(EventPlayerTeam @event, GameEventInfo _)
     {
         var p = @event.Userid;
-        if (p == null || !p.IsValid) return HookResult.Continue;
+        if (p == null || !p.IsValid || IsBot(p)) return HookResult.Continue;
         var sid = SteamId(p);
         // Team 3 = CT, Team 2 = T, Team 0 = Unassigned, Team 1 = Spectator
         if (@event.Team is 2 or 3)
@@ -150,7 +157,7 @@ public class ClutchboardPlugin : BasePlugin
     {
         if (_matchId == string.Empty) return HookResult.Continue;
         var victim = @event.Userid;
-        if (victim == null || !victim.IsValid) return HookResult.Continue;
+        if (victim == null || !victim.IsValid || IsBot(victim)) return HookResult.Continue;
         var killer   = @event.Attacker;
         var assister = @event.Assister;
         _api.EnqueueEvent(new KillEventDto
@@ -173,7 +180,7 @@ public class ClutchboardPlugin : BasePlugin
     {
         if (_matchId == string.Empty) return HookResult.Continue;
         var victim = @event.Userid;
-        if (victim == null || !victim.IsValid) return HookResult.Continue;
+        if (victim == null || !victim.IsValid || IsBot(victim)) return HookResult.Continue;
         var attacker = @event.Attacker;
         _api.EnqueueEvent(new DamageEventDto
         {
