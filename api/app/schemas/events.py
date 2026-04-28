@@ -88,6 +88,7 @@ class MatchEndEvent(BaseModel):
     ct_score: int
     duration_seconds: int | None = None
     player_teams: dict[str, str] = {}  # steam_id (str) → "T" | "CT"
+    demo_path: str | None = None
 
 
 class PlayerConnectEvent(BaseModel):

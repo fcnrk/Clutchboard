@@ -16,6 +16,7 @@ public class ClutchboardPlugin : BasePlugin
 
     private ApiClient _api = null!;
     private string _matchId = string.Empty;
+    private string _demoPath = string.Empty;
     private int _currentRound;
     private bool _matchStartSent;
     private string _gameDir = string.Empty;
@@ -32,6 +33,7 @@ public class ClutchboardPlugin : BasePlugin
         RegisterListener<Listeners.OnMapStart>(_ =>
         {
             _matchId = Guid.NewGuid().ToString();
+            _demoPath = string.Empty;
             _currentRound = 0;
             _matchStartSent = false;
             _playerTeams.Clear();
@@ -70,6 +72,8 @@ public class ClutchboardPlugin : BasePlugin
         if (!_matchStartSent)
         {
             _matchStartSent = true;
+            _demoPath = Path.Combine(_gameDir, "csgo", $"{_matchId}.dem");
+            Server.ExecuteCommand($"tv_record \"{_matchId}\"");
             EmitConnectedPlayers();
             _api.EnqueueEvent(new MatchStartEventDto
             {
@@ -110,6 +114,7 @@ public class ClutchboardPlugin : BasePlugin
     private HookResult OnMatchEnd(EventCsWinPanelMatch @event, GameEventInfo _)
     {
         if (_matchId == string.Empty) return HookResult.Continue;
+        Server.ExecuteCommand("tv_stoprecord");
         var teams = _playerTeams.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
         _api.EnqueueEvent(new MatchEndEventDto
         {
@@ -117,9 +122,11 @@ public class ClutchboardPlugin : BasePlugin
             TScore      = 0, // TODO: read from game state
             CtScore     = 0,
             PlayerTeams = teams,
+            DemoPath    = _demoPath,
         });
         _playerTeams.Clear();
         _matchId = string.Empty;
+        _demoPath = string.Empty;
         return HookResult.Continue;
     }
 
@@ -201,9 +208,9 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId         = _matchId,
             RoundNumber     = _currentRound,
-            KillerSteamId   = killer?.IsValid   == true && HasSteamId(killer)   ? (long?)SteamId(killer)   : null,
+            KillerSteamId   = killer?.IsValid   == true && !IsBot(killer)   && HasSteamId(killer)   ? (long?)SteamId(killer)   : null,
             VictimSteamId   = (long)SteamId(victim),
-            AssisterSteamId = assister?.IsValid == true && HasSteamId(assister) ? (long?)SteamId(assister) : null,
+            AssisterSteamId = assister?.IsValid == true && !IsBot(assister) && HasSteamId(assister) ? (long?)SteamId(assister) : null,
             Weapon          = @event.Weapon,
             Headshot        = @event.Headshot,
             Penetrated      = @event.Penetrated > 0,
@@ -223,7 +230,7 @@ public class ClutchboardPlugin : BasePlugin
         {
             MatchId          = _matchId,
             RoundNumber      = _currentRound,
-            AttackerSteamId  = attacker?.IsValid == true && HasSteamId(attacker) ? (long?)SteamId(attacker) : null,
+            AttackerSteamId  = attacker?.IsValid == true && !IsBot(attacker) && HasSteamId(attacker) ? (long?)SteamId(attacker) : null,
             VictimSteamId    = (long)SteamId(victim),
             Weapon           = @event.Weapon,
             Damage           = @event.DmgHealth,

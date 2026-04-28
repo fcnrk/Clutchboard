@@ -100,6 +100,7 @@ public class MatchEndEventDto
     [JsonPropertyName("ct_score")]         public int                 CtScore         { get; set; }
     [JsonPropertyName("duration_seconds")] public int?                DurationSeconds { get; set; }
     [JsonPropertyName("player_teams")]     public Dictionary<string, string> PlayerTeams { get; set; } = new();
+    [JsonPropertyName("demo_path")]        public string?             DemoPath        { get; set; }
 }
 
 public class PlayerConnectEventDto

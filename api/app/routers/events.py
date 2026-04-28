@@ -217,9 +217,10 @@ async def _match_end(conn: asyncpg.Connection, e: MatchEndEvent) -> None:
         """
         UPDATE matches
         SET t_score = $2, ct_score = $3, duration_seconds = $4,
-            status = 'completed', ended_at = now()
+            status = 'completed', ended_at = now(),
+            demo_path = COALESCE($5, demo_path)
         WHERE id = $1
         """,
-        match_id, e.t_score, e.ct_score, e.duration_seconds,
+        match_id, e.t_score, e.ct_score, e.duration_seconds, e.demo_path,
     )
     await end_match(conn, match_id, e.player_teams)
