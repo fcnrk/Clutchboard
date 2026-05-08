@@ -50,15 +50,26 @@ if [[ ! -f "$ADDONS_DIR/metamod.vdf" ]] || [[ ! -f "$ADDONS_DIR/metamod_x64.vdf"
 fi
 echo "    OK"
 
+echo "==> Updating CounterStrikeSharp"
+CSS_ASSET=$(curl -s "https://api.github.com/repos/roflmuffin/CounterStrikeSharp/releases/latest" \
+  | grep -oP '"browser_download_url": "\K[^"]+counterstrikesharp-with-runtime-build-[^"]+linux-x64[^"]*\.tar\.gz')
+
+if [[ -n "$CSS_ASSET" ]]; then
+  curl -fL "$CSS_ASSET" | tar -xz -C "$METAMOD_DIR"
+  echo "    Installed $(basename "$CSS_ASSET")"
+else
+  echo "    WARNING: Could not fetch CounterStrikeSharp release — skipping, keeping existing install"
+fi
+
 echo "==> Copying plugin binaries"
 if [[ ! -f "$PLUGIN_SRC/Clutchboard.dll" ]]; then
-  echo "    ERROR: Plugin DLL not found at $PLUGIN_SRC — build the plugin first"
-  exit 1
+  echo "    WARNING: Plugin DLL not found at $PLUGIN_SRC — skipping plugin copy (build and deploy manually)"
+else
+  mkdir -p "$PLUGIN_DST"
+  cp "$PLUGIN_SRC/Clutchboard.dll" "$PLUGIN_DST/"
+  cp "$(dirname "$0")/../plugin/config.json" "$PLUGIN_DST/"
+  echo "    Copied $(ls -lh "$PLUGIN_DST/Clutchboard.dll" | awk '{print $5}') Clutchboard.dll"
 fi
-mkdir -p "$PLUGIN_DST"
-cp "$PLUGIN_SRC/Clutchboard.dll" "$PLUGIN_DST/"
-cp "$(dirname "$0")/../plugin/config.json" "$PLUGIN_DST/"
-echo "    Copied $(ls -lh "$PLUGIN_DST/Clutchboard.dll" | awk '{print $5}') Clutchboard.dll"
 
 echo "==> Starting CS2 server"
 systemctl start cs2

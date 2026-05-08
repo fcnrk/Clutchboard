@@ -4,6 +4,7 @@ using CounterStrikeSharp.API.Core.Attributes;
 using Clutchboard.Models;
 using Clutchboard.Services;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Clutchboard;
 
@@ -19,8 +20,11 @@ public class ClutchboardPlugin : BasePlugin
     private string _demoPath = string.Empty;
     private int _currentRound;
     private bool _matchStartSent;
+    private bool _isWarmup = true;
     private string _gameDir = string.Empty;
     private readonly Dictionary<ulong, string> _playerTeams = new();
+    private readonly Dictionary<ulong, int> _playerMvps = new();
+    private readonly Dictionary<int, ulong> _steamIdCache = new(); // entity index → steam id
 
     public override void Load(bool hotReload)
     {
@@ -30,15 +34,25 @@ public class ClutchboardPlugin : BasePlugin
         // ModuleDirectory = .../csgo/addons/counterstrikesharp/plugins/Clutchboard/
         _gameDir = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", ".."));
 
+        RegisterListener<Listeners.OnClientAuthorized>((slot, steamId) =>
+        {
+            Logger.LogInformation("[CB] OnClientAuthorized slot={Slot} steamId={SteamId}", slot, steamId.SteamId64);
+            _steamIdCache[slot] = steamId.SteamId64;
+        });
+
         RegisterListener<Listeners.OnMapStart>(_ =>
         {
             _matchId = Guid.NewGuid().ToString();
             _demoPath = string.Empty;
             _currentRound = 0;
             _matchStartSent = false;
+            _isWarmup = true;
             _playerTeams.Clear();
+            _playerMvps.Clear();
+            _steamIdCache.Clear();
         });
 
+        RegisterEventHandler<EventWarmupEnd>((@event, _) => { _isWarmup = false; return HookResult.Continue; });
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
         RegisterEventHandler<EventCsWinPanelMatch>(OnMatchEnd);
@@ -51,6 +65,7 @@ public class ClutchboardPlugin : BasePlugin
         RegisterEventHandler<EventHegrenadeDetonate>(OnHeDetonate);
         RegisterEventHandler<EventWeaponFire>(OnWeaponFire);
         RegisterEventHandler<EventPlayerTeam>(OnPlayerTeam);
+        RegisterEventHandler<EventRoundMvp>(OnRoundMvp);
     }
 
     public override void Unload(bool hotReload)
@@ -60,8 +75,12 @@ public class ClutchboardPlugin : BasePlugin
 
     // ── Match lifecycle ───────────────────────────────────────────────────────
 
+    private bool IsWarmup() => _isWarmup;
+
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo _)
     {
+        if (IsWarmup()) return HookResult.Continue;
+
         if (_matchId == string.Empty)
         {
             _matchId = Guid.NewGuid().ToString();
@@ -94,12 +113,13 @@ public class ClutchboardPlugin : BasePlugin
 
     private HookResult OnRoundEnd(EventRoundEnd @event, GameEventInfo _)
     {
-        if (_matchId == string.Empty) return HookResult.Continue;
+        if (_matchId == string.Empty || IsWarmup()) return HookResult.Continue;
+        var winner = @event.Winner == 2 ? "T" : "CT";
         _api.EnqueueEvent(new RoundEndEventDto
         {
             MatchId     = _matchId,
             RoundNumber = _currentRound,
-            Winner      = @event.Winner == 2 ? "T" : "CT",
+            Winner      = winner,
             WinReason   = @event.Reason switch
             {
                 7  => "bomb_exploded",
@@ -115,16 +135,36 @@ public class ClutchboardPlugin : BasePlugin
     {
         if (_matchId == string.Empty) return HookResult.Continue;
         Server.ExecuteCommand("tv_stoprecord");
+        // CS2 takes a moment to flush and close the demo file after tv_stoprecord
+        Task.Run(async () => { await Task.Delay(5000); PruneOldDemos(10); });
+        var tScore = 0;
+        var ctScore = 0;
+        foreach (var team in Utilities.FindAllEntitiesByDesignerName<CCSTeam>("cs_team_manager"))
+        {
+            if (!team.IsValid) continue;
+            if (team.TeamNum == 2) tScore = team.Score;
+            else if (team.TeamNum == 3) ctScore = team.Score;
+        }
+        var playerScores = new Dictionary<string, int>();
+        foreach (var p in Utilities.GetPlayers())
+        {
+            if (p == null || !p.IsValid || IsBot(p) || !HasSteamId(p)) continue;
+            playerScores[SteamId(p).ToString()] = p.Score;
+        }
         var teams = _playerTeams.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
+        var mvps  = _playerMvps.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
         _api.EnqueueEvent(new MatchEndEventDto
         {
-            MatchId     = _matchId,
-            TScore      = 0, // TODO: read from game state
-            CtScore     = 0,
-            PlayerTeams = teams,
-            DemoPath    = _demoPath,
+            MatchId      = _matchId,
+            TScore       = tScore,
+            CtScore      = ctScore,
+            PlayerTeams  = teams,
+            PlayerScores = playerScores,
+            PlayerMvps   = mvps,
+            DemoPath     = _demoPath,
         });
         _playerTeams.Clear();
+        _playerMvps.Clear();
         _matchId = string.Empty;
         _demoPath = string.Empty;
         return HookResult.Continue;
@@ -132,13 +172,17 @@ public class ClutchboardPlugin : BasePlugin
 
     // ── Player events ─────────────────────────────────────────────────────────
 
-    private static ulong SteamId(CCSPlayerController p) =>
-        p.AuthorizedSteamID?.SteamId64 ?? p.SteamID;
+    private ulong SteamId(CCSPlayerController p)
+    {
+        var sid = p.AuthorizedSteamID?.SteamId64 ?? 0UL;
+        if (sid != 0UL) return sid;
+        _steamIdCache.TryGetValue((int)p.Slot, out sid);
+        return sid;
+    }
 
     private static bool IsBot(CCSPlayerController p) => p.IsBot;
 
-    // Returns false when steam auth hasn't resolved yet — avoids FK violations on the players table.
-    private static bool HasSteamId(CCSPlayerController p) => SteamId(p) != 0UL;
+    private bool HasSteamId(CCSPlayerController p) => SteamId(p) != 0UL;
 
     private void EmitConnectedPlayers()
     {
@@ -176,9 +220,11 @@ public class ClutchboardPlugin : BasePlugin
     {
         var p = @event.Userid;
         if (p == null || !p.IsValid || IsBot(p)) return HookResult.Continue;
+        var sid = SteamId(p);
+        if (sid == 0UL) return HookResult.Continue;
         _api.EnqueueEvent(new PlayerConnectEventDto
         {
-            SteamId     = (long)SteamId(p),
+            SteamId     = (long)sid,
             DisplayName = p.PlayerName,
         });
         return HookResult.Continue;
@@ -197,12 +243,33 @@ public class ClutchboardPlugin : BasePlugin
         return HookResult.Continue;
     }
 
+    private HookResult OnRoundMvp(EventRoundMvp @event, GameEventInfo _)
+    {
+        if (_matchId == string.Empty || IsWarmup()) return HookResult.Continue;
+        var p = @event.Userid;
+        if (p == null || !p.IsValid || IsBot(p) || !HasSteamId(p)) return HookResult.Continue;
+        var sid = SteamId(p);
+        _playerMvps[sid] = _playerMvps.GetValueOrDefault(sid) + 1;
+        _api.EnqueueEvent(new MvpEventDto
+        {
+            MatchId     = _matchId,
+            RoundNumber = _currentRound,
+            SteamId     = (long)sid,
+            Reason      = @event.Reason,
+        });
+        return HookResult.Continue;
+    }
+
     private HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo _)
     {
-        if (_matchId == string.Empty) return HookResult.Continue;
+        if (_matchId == string.Empty || IsWarmup()) return HookResult.Continue;
         var victim = @event.Userid;
+        var killer = @event.Attacker;
+        Logger.LogInformation("[CB] OnPlayerDeath victim={Victim}(bot={VBot},slot={VSlot},sid={VSid}) killer={Killer}(bot={KBot},slot={KSlot},sid={KSid}) weapon={Weapon}",
+            victim?.PlayerName, victim?.IsBot, victim?.Slot, victim != null ? SteamId(victim) : 0,
+            killer?.PlayerName, killer?.IsBot, killer?.Slot, killer != null ? SteamId(killer) : 0,
+            @event.Weapon);
         if (victim == null || !victim.IsValid || IsBot(victim) || !HasSteamId(victim)) return HookResult.Continue;
-        var killer   = @event.Attacker;
         var assister = @event.Assister;
         _api.EnqueueEvent(new KillEventDto
         {
@@ -222,10 +289,14 @@ public class ClutchboardPlugin : BasePlugin
 
     private HookResult OnPlayerHurt(EventPlayerHurt @event, GameEventInfo _)
     {
-        if (_matchId == string.Empty) return HookResult.Continue;
+        if (_matchId == string.Empty || IsWarmup()) return HookResult.Continue;
         var victim = @event.Userid;
-        if (victim == null || !victim.IsValid || IsBot(victim) || !HasSteamId(victim)) return HookResult.Continue;
         var attacker = @event.Attacker;
+        Logger.LogInformation("[CB] OnPlayerHurt victim={Victim}(bot={VBot},sid={VSid}) attacker={Attacker}(bot={ABot},sid={ASid}) weapon={Weapon} dmg={Dmg}",
+            victim?.PlayerName, victim?.IsBot, victim != null ? SteamId(victim) : 0,
+            attacker?.PlayerName, attacker?.IsBot, attacker != null ? SteamId(attacker) : 0,
+            @event.Weapon, @event.DmgHealth);
+        if (victim == null || !victim.IsValid || IsBot(victim) || !HasSteamId(victim)) return HookResult.Continue;
         _api.EnqueueEvent(new DamageEventDto
         {
             MatchId          = _matchId,
@@ -269,7 +340,7 @@ public class ClutchboardPlugin : BasePlugin
 
     private void EmitUtility(CCSPlayerController? player, string eventType)
     {
-        if (_matchId == string.Empty || player == null || !player.IsValid) return;
+        if (_matchId == string.Empty || IsWarmup() || player == null || !player.IsValid) return;
         _api.EnqueueEvent(new UtilityEventDto
         {
             MatchId     = _matchId,
@@ -281,7 +352,7 @@ public class ClutchboardPlugin : BasePlugin
 
     private HookResult OnWeaponFire(EventWeaponFire @event, GameEventInfo _)
     {
-        if (_matchId == string.Empty) return HookResult.Continue;
+        if (_matchId == string.Empty || IsWarmup()) return HookResult.Continue;
         var p = @event.Userid;
         if (p == null || !p.IsValid) return HookResult.Continue;
         _api.EnqueueEvent(new WeaponFireEventDto
@@ -292,6 +363,28 @@ public class ClutchboardPlugin : BasePlugin
             Weapon      = @event.Weapon,
         });
         return HookResult.Continue;
+    }
+
+    // ── Demo management ───────────────────────────────────────────────────────
+
+    private void PruneOldDemos(int keep)
+    {
+        var demoDir = Path.Combine(_gameDir, "csgo");
+        try
+        {
+            var demos = Directory.GetFiles(demoDir, "*.dem")
+                .OrderBy(File.GetLastWriteTimeUtc)
+                .ToArray();
+            foreach (var old in demos.Take(Math.Max(0, demos.Length - keep)))
+            {
+                File.Delete(old);
+                Logger.LogInformation("[CB] Deleted old demo: {File}", Path.GetFileName(old));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning("[CB] Demo prune failed: {Error}", ex.Message);
+        }
     }
 
     // ── Config ────────────────────────────────────────────────────────────────

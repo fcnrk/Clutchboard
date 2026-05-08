@@ -31,9 +31,20 @@ sudo -u steam /usr/games/steamcmd \
   +app_update 730 validate \
   +quit
 
+echo "==> Installing server.cfg"
+mkdir -p /home/steam/cs2/game/csgo/cfg
+cp /root/deploy/server.cfg /home/steam/cs2/game/csgo/cfg/server.cfg
+chown steam:steam /home/steam/cs2/game/csgo/cfg/server.cfg
+
 echo "==> Installing systemd service"
 cp /root/deploy/cs2.service /etc/systemd/system/cs2.service
 systemctl daemon-reload
 systemctl enable cs2
+
+echo "==> Installing CS2 auto-update timer (daily at 05:00 UTC)"
+cp /root/deploy/cs2-update.service /etc/systemd/system/cs2-update.service
+cp /root/deploy/cs2-update.timer /etc/systemd/system/cs2-update.timer
+systemctl daemon-reload
+systemctl enable --now cs2-update.timer
 
 echo "==> Setup complete. Copy your .env file and run: docker compose up -d --build"

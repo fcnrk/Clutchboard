@@ -99,8 +99,19 @@ public class MatchEndEventDto
     [JsonPropertyName("t_score")]          public int                 TScore          { get; set; }
     [JsonPropertyName("ct_score")]         public int                 CtScore         { get; set; }
     [JsonPropertyName("duration_seconds")] public int?                DurationSeconds { get; set; }
-    [JsonPropertyName("player_teams")]     public Dictionary<string, string> PlayerTeams { get; set; } = new();
+    [JsonPropertyName("player_teams")]     public Dictionary<string, string> PlayerTeams  { get; set; } = new();
+    [JsonPropertyName("player_scores")]    public Dictionary<string, int>    PlayerScores { get; set; } = new();
+    [JsonPropertyName("player_mvps")]      public Dictionary<string, int>    PlayerMvps   { get; set; } = new();
     [JsonPropertyName("demo_path")]        public string?             DemoPath        { get; set; }
+}
+
+public class MvpEventDto
+{
+    [JsonPropertyName("type")]         public string Type        { get; set; } = "mvp";
+    [JsonPropertyName("match_id")]     public string MatchId     { get; set; } = "";
+    [JsonPropertyName("round_number")] public int    RoundNumber { get; set; }
+    [JsonPropertyName("steam_id")]     public long   SteamId     { get; set; }
+    [JsonPropertyName("reason")]       public int    Reason      { get; set; }
 }
 
 public class PlayerConnectEventDto

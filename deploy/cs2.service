@@ -7,6 +7,7 @@ Type=simple
 User=steam
 WorkingDirectory=/home/steam/cs2
 Environment=LD_LIBRARY_PATH=/home/steam/cs2/game/csgo/bin/linuxsteamrt64:/home/steam/cs2/game/bin/linuxsteamrt64
+ExecStartPre=/bin/bash -c 'grep -q "addons/metamod" /home/steam/cs2/game/csgo/gameinfo.gi || sed -i "s|\t\t\tGame_LowViolence|\t\t\tGame\t\tcsgo/addons/metamod\n\t\t\tGame_LowViolence|" /home/steam/cs2/game/csgo/gameinfo.gi'
 ExecStart=/home/steam/cs2/game/bin/linuxsteamrt64/cs2 \
   -dedicated \
   -console \

@@ -1,0 +1,11 @@
+[Unit]
+Description=CS2 Server Auto-Update (CS2 + Metamod + CounterStrikeSharp)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/home/steam/clutchboard/deploy/update-cs2.sh
+StandardOutput=journal
+StandardError=journal
