@@ -28,9 +28,13 @@ METAMOD_URL=$(curl -sA "Mozilla/5.0" https://mms.alliedmods.net/mmsdrop/2.0/ \
   | tail -1)
 
 if [[ -n "$METAMOD_URL" ]]; then
-  curl -fLA "Mozilla/5.0" "https://mms.alliedmods.net/mmsdrop/2.0/${METAMOD_URL}" \
-    | tar -xz -C "$METAMOD_DIR"
-  echo "    Installed ${METAMOD_URL}"
+  if curl -fLA "Mozilla/5.0" -e "https://mms.alliedmods.net/mmsdrop/2.0/" \
+       "https://mms.alliedmods.net/mmsdrop/2.0/${METAMOD_URL}" \
+       | tar -xz -C "$METAMOD_DIR"; then
+    echo "    Installed ${METAMOD_URL}"
+  else
+    echo "    WARNING: Metamod download failed — keeping existing install"
+  fi
 else
   echo "    WARNING: Could not fetch Metamod URL — skipping download, keeping existing install"
 fi
@@ -55,8 +59,11 @@ CSS_ASSET=$(curl -s "https://api.github.com/repos/roflmuffin/CounterStrikeSharp/
   | grep -oP '"browser_download_url": "\K[^"]+counterstrikesharp-with-runtime-build-[^"]+linux-x64[^"]*\.tar\.gz')
 
 if [[ -n "$CSS_ASSET" ]]; then
-  curl -fL "$CSS_ASSET" | tar -xz -C "$METAMOD_DIR"
-  echo "    Installed $(basename "$CSS_ASSET")"
+  if curl -fL "$CSS_ASSET" | tar -xz -C "$METAMOD_DIR"; then
+    echo "    Installed $(basename "$CSS_ASSET")"
+  else
+    echo "    WARNING: CounterStrikeSharp download failed — keeping existing install"
+  fi
 else
   echo "    WARNING: Could not fetch CounterStrikeSharp release — skipping, keeping existing install"
 fi
