@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+LOG=/var/log/cs2-update.log
+exec >> "$LOG" 2>&1
+echo ""
+echo "==> CS2 update started at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+PLUGIN_SRC="$(dirname "$0")/../plugin/bin/Release/net8.0"
+PLUGIN_DST="/home/steam/cs2/game/csgo/addons/counterstrikesharp/plugins/Clutchboard"
+GAMEINFO="/home/steam/cs2/game/csgo/gameinfo.gi"
+METAMOD_DIR="/home/steam/cs2/game/csgo"
+ADDONS_DIR="/home/steam/cs2/game/csgo/addons"
+
 echo "==> Stopping CS2 server"
 systemctl stop cs2
 
-echo "==> Updating CS2"
+echo "==> Updating CS2 via SteamCMD"
 sudo -u steam /usr/games/steamcmd \
   +force_install_dir /home/steam/cs2 \
   +login anonymous \
@@ -12,30 +23,43 @@ sudo -u steam /usr/games/steamcmd \
   +quit
 
 echo "==> Updating Metamod"
-METAMOD_URL=$(curl -s https://mms.alliedmods.net/mmsdrop/2.0/ \
+METAMOD_URL=$(curl -sA "Mozilla/5.0" https://mms.alliedmods.net/mmsdrop/2.0/ \
   | grep -oP 'mmsource-[0-9.]+-git\d+-linux\.tar\.gz' \
   | tail -1)
-curl -fL "https://mms.alliedmods.net/mmsdrop/2.0/${METAMOD_URL}" \
-  | tar -xz -C /home/steam/cs2/game/csgo/
-echo "    Installed ${METAMOD_URL}"
 
-echo "==> Restoring gameinfo.gi Metamod entry"
-if ! grep -q "addons/metamod" /home/steam/cs2/game/csgo/gameinfo.gi; then
-  sed -i 's|\t\t\tGame_LowViolence|\t\t\tGame\t\tcsgo/addons/metamod\n\t\t\tGame_LowViolence|' \
-    /home/steam/cs2/game/csgo/gameinfo.gi
+if [[ -n "$METAMOD_URL" ]]; then
+  curl -fLA "Mozilla/5.0" "https://mms.alliedmods.net/mmsdrop/2.0/${METAMOD_URL}" \
+    | tar -xz -C "$METAMOD_DIR"
+  echo "    Installed ${METAMOD_URL}"
+else
+  echo "    WARNING: Could not fetch Metamod URL — skipping download, keeping existing install"
+fi
+
+echo "==> Verifying gameinfo.gi Metamod entry"
+if ! grep -q "addons/metamod" "$GAMEINFO"; then
+  sed -i 's|\t\t\tGame_LowViolence|\t\t\tGame\t\tcsgo/addons/metamod\n\t\t\tGame_LowViolence|' "$GAMEINFO"
   echo "    Entry added"
 else
   echo "    Entry already present"
 fi
 
+echo "==> Verifying Metamod vdf files"
+if [[ ! -f "$ADDONS_DIR/metamod.vdf" ]] || [[ ! -f "$ADDONS_DIR/metamod_x64.vdf" ]]; then
+  echo "    ERROR: Metamod vdf files missing — Metamod may not have installed correctly"
+  exit 1
+fi
+echo "    OK"
+
 echo "==> Copying plugin binaries"
-# Assumes plugin is built to plugin/bin/Release/net8.0/
-PLUGIN_SRC="$(dirname "$0")/../plugin/bin/Release/net8.0"
-PLUGIN_DST="/home/steam/cs2/game/csgo/addons/counterstrikesharp/plugins/Clutchboard"
+if [[ ! -f "$PLUGIN_SRC/Clutchboard.dll" ]]; then
+  echo "    ERROR: Plugin DLL not found at $PLUGIN_SRC — build the plugin first"
+  exit 1
+fi
 mkdir -p "$PLUGIN_DST"
 cp "$PLUGIN_SRC/Clutchboard.dll" "$PLUGIN_DST/"
 cp "$(dirname "$0")/../plugin/config.json" "$PLUGIN_DST/"
+echo "    Copied $(ls -lh "$PLUGIN_DST/Clutchboard.dll" | awk '{print $5}') Clutchboard.dll"
 
 echo "==> Starting CS2 server"
 systemctl start cs2
-echo "==> Done"
+echo "==> Done at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
