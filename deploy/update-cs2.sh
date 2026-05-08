@@ -25,7 +25,8 @@ sudo -u steam /usr/games/steamcmd \
 echo "==> Updating Metamod"
 METAMOD_URL=$(curl -sA "Mozilla/5.0" https://mms.alliedmods.net/mmsdrop/2.0/ \
   | grep -oP 'mmsource-[0-9.]+-git\d+-linux\.tar\.gz' \
-  | tail -1)
+  | tail -1 \
+  || true)
 
 if [[ -n "$METAMOD_URL" ]]; then
   if curl -fLA "Mozilla/5.0" -e "https://mms.alliedmods.net/mmsdrop/2.0/" \
@@ -56,7 +57,9 @@ echo "    OK"
 
 echo "==> Updating CounterStrikeSharp"
 CSS_ASSET=$(curl -s "https://api.github.com/repos/roflmuffin/CounterStrikeSharp/releases/latest" \
-  | grep -oP '"browser_download_url": "\K[^"]+counterstrikesharp-with-runtime-build-[^"]+linux-x64[^"]*\.tar\.gz')
+  | grep -oP '"browser_download_url":\s*"\K[^"]*linux-x64[^"]*\.tar\.gz' \
+  | head -1 \
+  || true)
 
 if [[ -n "$CSS_ASSET" ]]; then
   if curl -fL "$CSS_ASSET" | tar -xz -C "$METAMOD_DIR"; then
